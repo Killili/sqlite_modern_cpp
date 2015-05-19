@@ -9,6 +9,7 @@
 #include "sqlite3.h"
 
 #include "utility/function_traits.h"
+#include "utility/scope_guard.h"
 
 namespace sqlite {
 
@@ -86,9 +87,15 @@ private:
 	}
 	void _extract_single_value(std::function<void(void)> call_back) {
 		int hresult;
+		bool callback_called = false;
 
 		if ((hresult = sqlite3_step(_stmt)) == SQLITE_ROW) {
 			call_back();
+			callback_called = true;
+		}
+
+		if(!callback_called && has_flag("sqlite_flag", (int)options::throw_on_no_rows)) {
+			throw_custom_error("No rows returned!");
 		}
 
 		if ((hresult = sqlite3_step(_stmt)) == SQLITE_ROW) {
@@ -153,27 +160,34 @@ public:
 	};
 
 	~database_binder() {
-		throw_exceptions = false;
 		/* Will be executed if no >>op is found */
 		if (_stmt) {
+			scope_guard cleanup = [&]() { // will be executed no matter what happens afterwards
+				if(sqlite3_finalize(_stmt) != SQLITE_OK) {
+					throw_sqlite_error();
+				}
+				_stmt = nullptr;
+			};
+			
 			int hresult;
-
-			while ((hresult = sqlite3_step(_stmt)) == SQLITE_ROW) { }
-
-			if (hresult != SQLITE_DONE) {
-				throw_sqlite_error();
+			bool rows_returned = false;
+			while((hresult = sqlite3_step(_stmt)) == SQLITE_ROW) { // might be called twice ore more even for one statement (e.g. setting options)
+				rows_returned = true;
 			}
 
-			if (sqlite3_finalize(_stmt) != SQLITE_OK) {
-				throw_sqlite_error();
+			if(!rows_returned && has_flag("sqlite_flag", (int)options::throw_on_no_rows)) {
+				throw_custom_error("No rows returned!");
 			}
 
-			_stmt = nullptr;
+			if(hresult != SQLITE_DONE) {
+				throw_sqlite_error();
+			}
 		}
 	}
 
 	void throw_sqlite_error() {
 		if(throw_exceptions) {
+			throw_exceptions = false;
 			throw sqlite_exception(sqlite3_errmsg(_db));
 		}
 		error_occured = true;
@@ -181,6 +195,7 @@ public:
 
 	void throw_custom_error(const char* str) {
 		if(throw_exceptions) {
+			throw_exceptions = false;
 			throw std::runtime_error(str);
 		}
 		error_occured = true;
@@ -190,7 +205,7 @@ public:
 	typename std::enable_if<is_sqlite_value<Result>::value, void>::type operator>>(
 		Result& value) {
 		this->_extract_single_value([&value, this]{
-			this->get_col_from_db(0, value);
+			get_col_from_db(*this,0, value);
 		});
 	}
 
