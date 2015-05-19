@@ -127,6 +127,7 @@ private:
 		|| std::is_same<std::string, Type>::value
 		|| std::is_same<std::u16string, Type>::value
 		|| std::is_same<sqlite_int64, Type>::value
+		|| std::is_pointer<Type>::value
 	>;
 
 	template<typename T> friend database_binder& operator <<(database_binder& ddb, const T& val);
@@ -162,7 +163,7 @@ public:
 	~database_binder() {
 		/* Will be executed if no >>op is found */
 		if (_stmt) {
-			scope_guard cleanup = [&]() { // will be executed no matter what happens afterwards
+			utility::scope_guard cleanup = [&]() { // will be executed no matter what happens afterwards
 				if(sqlite3_finalize(_stmt) != SQLITE_OK) {
 					throw_sqlite_error();
 				}

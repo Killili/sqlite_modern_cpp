@@ -1,7 +1,7 @@
 sqlite modern cpp wrapper
 ====
 
-This library is a lightweight modern wrapper around sqlite C api .
+This library is a lightweight extensible modern wrapper around sqlite C api .
 
 ```c++
 #include<iostream>
@@ -149,6 +149,60 @@ If you have databases where some rows may be null, you can use boost::optional t
 	}
 ```
 
+Type extension and serialization
+=====
+The librarie is extenable for any type you want, an example is the boost::optinal implementation above. But here an example of what it takes to make youre own type:
+```c++
+// This is the object you wanne save to the DB without a lot of hassel
+class Foo {
+public:
+	int val = 0;
+	Foo(int val):val(val) {}
+	~Foo() {}
+};
+
+// First you need to supply a serialization methode, you can do that in youre own code like so:
+namespace sqlite {
+	template<> database_binder& operator <<(database_binder& db, const Bam& val) { // here you specialize the operator to take youre object
+
+		db << (int)val.val; // calls the operator<<() for int values so we can save our only member data field
+							// for more complex examples see extensions/boost_json_spirit.h there we write a blob to the db
+		
+		// we could also use mysqlite directly instead of utelising an existing function like this:
+		// if(sqlite3_bind_int(db._stmt, db._inx, val) != SQLITE_OK) {
+		//		db.throw_sqlite_error();
+		// }
+
+		++db._inx; // boilerplate code has to be here dont care about it
+		return db;
+	}
+}
+
+// we can now write our object to the database with ease:
+{
+	Foo bar1(1);
+	db << "insert into test(val) values (?)" << bar1;
+}
+
+// to get it back we need to give a deserialization method:
+namespace sqlite {
+	template<> void get_col_from_db(database_binder& db, int inx, Bam*& ret) {	// again specifie the type it will be used on, a pointer is neccesary if youre type has no default constructor. Otherwise a object ref does the job too.
+		auto member = sqlite3_column_int(db._stmt, inx);						// sqlite function to read the column
+		ret = new Foo(member);													// create or assign the return value
+	}
+}
+
+// now we can retrieve our object as we see fit:
+{// the simple way
+	Bam* b3 = nullptr;
+	db << "select val from test" << sqlite::options::throw_on_no_rows >> b3;
+	delete b3;
+}
+{// the more secure way
+	std::unique_ptr<Bam> b2;
+	db << "select val from test" >> [&](Bam* b) { b2 = std::unique_ptr<Bam>(b); };
+}
+```
 
 *node: for NDK use the full path to your database file : `sqlite::database db("/data/data/com.your.package/dbfile.db")`*.
 
