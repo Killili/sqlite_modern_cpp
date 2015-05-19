@@ -3,7 +3,8 @@
 #include <string>
 #include <functional>
 #include <stdexcept>
-#include <ctime>
+#include <unordered_set>
+#include <algorithm>
 
 #include "sqlite3.h"
 
@@ -24,22 +25,53 @@ template<std::size_t> class binder;
 template<typename T> database_binder& operator <<(database_binder& db, const T& val);
 template<typename T> void get_col_from_db(database_binder& db, int inx, T& val);
 
+struct option {
+	std::string name;
+	int val;
+	inline bool operator==(const std::string& rhs) { return this->name == rhs; };
+	option(std::string name, int val):name(name), val(val) {};
+};
+enum class options {
+	throw_on_no_rows
+};
 
-class database_binder {
+class database_binder {	
 private:
 	sqlite3* const _db;
 	std::u16string _sql;
 	sqlite3_stmt* _stmt;
 	int _inx;
+	std::vector<option> options_set;
 
 	bool throw_exceptions = true;
 	bool error_occured = false;
 
+	bool has_flag(std::string const& name, const int& val) {
+		auto itr = std::find_if(options_set.begin(), options_set.end(), [&](const option& item) { return item.name == name && item.val == val; });
+		if(itr != options_set.end()) {
+			return true;
+		}
+		return false;
+	};
+
+	option* get_option(std::string const& name) {
+		auto itr = std::find_if(options_set.begin(), options_set.end(), [&](const option& item) { return item.name == name; });
+		if(itr != options_set.end()) {
+			return &(*itr);
+		}
+		return nullptr;
+	};
+
 	void _extract(std::function<void(void)> call_back) {
 		int hresult;
-
+		bool callback_called = false;
 		while ((hresult = sqlite3_step(_stmt)) == SQLITE_ROW) {
 			call_back();
+			callback_called = true;
+		}
+
+		if(!callback_called && has_flag("sqlite_flag", (int)options::throw_on_no_rows)) {
+			throw_custom_error("No rows returned!");
 		}
 
 		if (hresult != SQLITE_DONE) {
@@ -107,6 +139,18 @@ protected:
 
 public:
 	friend class database;
+
+	
+
+	database_binder& operator <<(const options& opt) {
+		options_set.push_back(option("sqlite_flag",(int)opt));
+		return *this;
+	};
+
+	database_binder& operator <<(const option& opt) {
+		options_set.push_back(opt);
+		return *this;
+	};
 
 	~database_binder() {
 		throw_exceptions = false;
