@@ -151,9 +151,9 @@ If you have databases where some rows may be null, you can use boost::optional t
 
 Type extension and serialization
 =====
-The librarie is extenable for any type you want, an example is the boost::optinal implementation above. But here an example of what it takes to make youre own type:
+The library is extendable for any type you want, an example is the boost::optional implementation above. But here an example of what it takes to make you’re own type:
 ```c++
-// This is the object you wanne save to the DB without a lot of hassel
+// This is the object you want save to the DB without a lot of hassle
 class Foo {
 public:
 	int val = 0;
@@ -161,14 +161,14 @@ public:
 	~Foo() {}
 };
 
-// First you need to supply a serialization methode, you can do that in youre own code like so:
+// First you need to supply a serialization method, you can do that in you’re own code like so:
 namespace sqlite {
-	template<> database_binder& operator <<(database_binder& db, const Bam& val) { // here you specialize the operator to take youre object
+	template<> database_binder& operator <<(database_binder& db, const Foo& val) { // here you specialize the operator to take you’re object
 
 		db << (int)val.val; // calls the operator<<() for int values so we can save our only member data field
 							// for more complex examples see extensions/boost_json_spirit.h there we write a blob to the db
 		
-		// we could also use mysqlite directly instead of utelising an existing function like this:
+		// we could also use mysqlite directly instead of utilizing an existing function like this:
 		// if(sqlite3_bind_int(db._stmt, db._inx, val) != SQLITE_OK) {
 		//		db.throw_sqlite_error();
 		// }
@@ -186,7 +186,7 @@ namespace sqlite {
 
 // to get it back we need to give a deserialization method:
 namespace sqlite {
-	template<> void get_col_from_db(database_binder& db, int inx, Bam*& ret) {	// again specifie the type it will be used on, a pointer is neccesary if youre type has no default constructor. Otherwise a object ref does the job too.
+	template<> void get_col_from_db(database_binder& db, int inx, Foo*& ret) {	// again specify the type it will be used on, a pointer is necessary if you’re type has no default constructor. Otherwise a object ref does the job too.
 		auto member = sqlite3_column_int(db._stmt, inx);						// sqlite function to read the column
 		ret = new Foo(member);													// create or assign the return value
 	}
